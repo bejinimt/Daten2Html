@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>TXT-Datei Filter & Anzeige</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      display: flex;
+      height: 100vh;
+      background-color: #121212;
+      color: #ffffff;
+    }
+
+    #left, #right {
+      width: 50%;
+      padding: 20px;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+
+    #left {
+      background-color: #1e1e1e;
+      border-right: 2px solid #333;
+      position: relative;
+    }
+
+    #right {
+      background-color: #2c2c2c;
+    }
+
+    textarea {
+      width: 100%;
+      height: calc(100% - 220px);
+      resize: none;
+      font-family: monospace;
+      font-size: 14px;
+      background-color: #2a2a2a;
+      color: #ffffff;
+      border: 1px solid #444;
+      padding: 10px;
+    }
+
+    input[type="text"], button {
+      margin-top: 10px;
+      padding: 10px;
+      font-size: 14px;
+      background-color: #444;
+      color: #fff;
+      border: none;
+      width: calc(100% - 22px);
+      box-sizing: border-box;
+    }
+
+    button:hover {
+      background-color: #666;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    .block {
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      cursor: pointer;
+    }
+
+    #dropZone {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border: 2px dashed #888;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: #aaa;
+      font-size: 18px;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="left">
+    <div id="dropZone">Datei hierher ziehen</div>
+    <textarea id="textArea" placeholder="Textinhalt wird hier angezeigt..."></textarea>
+    <input type="text" id="searchInput" placeholder="Suchbegriff eingeben">
+    <label><input type="checkbox" id="searchAllLines"> In allen Zeilen suchen</label>
+    <button onclick="renderBlocks()">Filtern & Anzeigen</button>
+    <button onclick="saveText()">Speichern</button>
+  </div>
+  <div id="right">
+    <h2>Gefilterte Blöcke</h2>
+    <div id="renderedOutput"></div>
+  </div>
+
+  <script>
+    const textArea = document.getElementById('textArea');
+    const renderedOutput = document.getElementById('renderedOutput');
+    const dropZone = document.getElementById('dropZone');
+    const searchInput = document.getElementById('searchInput');
+    const searchAllLines = document.getElementById('searchAllLines');
+    const colors = ['#1e3a5f', '#294a6e'];
+
+    function renderBlocks() {
+      const text = textArea.value;
+      const blocks = text.split(/\n\s*\n/);
+      const keyword = searchInput.value.trim().toLowerCase();
+      const searchEveryLine = searchAllLines.checked;
+
+      renderedOutput.innerHTML = '';
+      let currentIndex = 0;
+
+      blocks.forEach((block, index) => {
+        const lines = block.trim().split('\n');
+        const firstLine = lines[0].trim();
+        const match = keyword === '' || (
+          searchEveryLine
+            ? lines.some(line => line.toLowerCase().includes(keyword))
+            : firstLine.toLowerCase().includes(keyword)
+        );
+
+        if (match) {
+          const div = document.createElement('div');
+          div.className = 'block';
+          div.style.backgroundColor = colors[index % 2];
+          div.textContent = block.trim();
+
+          // Position im Originaltext merken
+          const blockStart = text.indexOf(block, currentIndex);
+          currentIndex = blockStart + block.length;
+          div.dataset.start = blockStart;
+
+          // Link-Erkennung
+          const linkContainer = document.createElement('div');
+          linkContainer.style.marginTop = '5px';
+
+          const domainPattern = /^[a-z0-9\-]+\.[a-z]{2,}$/i;
+          const fullUrlPattern = /^https?:\/\/\S+\.\S+/i;
+          const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+          if (fullUrlPattern.test(firstLine)) {
+            const link = document.createElement('a');
+            link.href = firstLine;
+            link.textContent = '🔗 Webseite öffnen';
+            link.target = '_blank';
+            link.style.color = '#00bfff';
+            link.style.display = 'block';
+            linkContainer.appendChild(link);
+          } else if (domainPattern.test(firstLine)) {
+            const link = document.createElement('a');
+            link.href = `https://www.${firstLine}`;
+            link.textContent = `🌐 Öffnen: www.${firstLine}`;
+            link.target = '_blank';
+            link.style.color = '#00bfff';
+            link.style.display = 'block';
+            linkContainer.appendChild(link);
+          } else if (emailPattern.test(firstLine)) {
+            const domain = firstLine.split('@')[1];
+            const link = document.createElement('a');
+            link.href = `https://www.${domain}`;
+            link.textContent = `📬 Domain öffnen: ${domain}`;
+            link.target = '_blank';
+            link.style.color = '#00ff88';
+            link.style.display = 'block';
+            linkContainer.appendChild(link);
+          }
+
+          div.appendChild(linkContainer);
+          renderedOutput.appendChild(div);
+        }
+      });
+    }
+
+    function saveText() {
+      const content = textArea.value;
+      const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
+      const filename = `text_${timestamp}.txt`;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    // Drag & Drop
+    ['dragenter', 'dragover'].forEach(evt => {
+      document.body.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.style.display = 'flex';
+      });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      document.body.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.style.display = 'none';
+      });
+    });
+    dropZone.addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
+      if (file && file.type === 'text/plain') {
+        const reader = new FileReader();
+        reader.onload = e => {
+          textArea.value = e.target.result;
+          renderBlocks();
+        };
+        reader.readAsText(file);
+      } else {
+        alert('Bitte eine .txt-Datei verwenden.');
+      }
+    });
+
+    // Live-Filter und Klick-Interaktionen
+    textArea.addEventListener('input', renderBlocks);
+    searchInput.addEventListener('input', renderBlocks);
+    searchAllLines.addEventListener('change', renderBlocks);
+
+    textArea.addEventListener('click', () => {
+      const cursorPos = textArea.selectionStart;
+      const text = textArea.value;
+      const left = text.slice(0, cursorPos).search(/\S+$/);
+      const right = text.slice(cursorPos).search(/\s/);
+      const end = right === -1 ? text.length : cursorPos + right;
+      const word = text.slice(left, end).trim();
+      if (word.length > 0) {
+        searchInput.value = word;
+        navigator.clipboard.writeText(word)
+          .catch(err => console.error('Clipboard-Fehler:', err));
+        renderBlocks();
+      }
+    });
+
+    searchInput.addEventListener('dblclick', () => {
+      searchInput.value = '';
+      renderBlocks();
+    });
+
+    // Klick auf Block rechts → scrollt links zum Block
+    renderedOutput.addEventListener('click', e => {
+      const block = e.target.closest('.block');
+      if (block && block.dataset.start) {
+        const pos = parseInt(block.dataset.start, 10);
+        textArea.focus();
+        textArea.setSelectionRange(pos, pos);
+        const lineHeight = 18; // anpassen falls nötig
+        const linesAbove = textArea.value.slice(0, pos).split('\n').length;
+        
+        const offset = textArea.clientHeight / 3;
+        textArea.scrollTop = (linesAbove - 1) * lineHeight - offset;
+
+      }
+    });
+
+    // Automatisches Speichern beim Schließen
+    window.addEventListener('beforeunload', saveText);
+  </script>
+</body>
+</html>
