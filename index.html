@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>TXT-Datei Filter & Anzeige</title>
+  <title>TXT-Datei Filter & Anzeige mit Zeilennummern</title>
   <style>
     body {
       margin: 0;
@@ -12,37 +12,53 @@
       background-color: #121212;
       color: #ffffff;
     }
-
     #left, #right {
       width: 50%;
       padding: 20px;
       box-sizing: border-box;
       overflow-y: auto;
     }
-
     #left {
       background-color: #1e1e1e;
       border-right: 2px solid #333;
       position: relative;
     }
-
     #right {
       background-color: #2c2c2c;
     }
-
-    textarea {
+    #editorContainer {
+      display: flex;
+      height: calc(100% - 180px);
+      border: 1px solid #444;
+      background-color: #2a2a2a;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    #lineNumbers {
+      width: 40px;
+      padding: 10px 5px;
+      text-align: right;
+      color: #888;
+      font-family: monospace;
+      font-size: 14px;
+      background-color: #1e1e1e;
+      user-select: none;
+      overflow: hidden;
+    }
+    #textArea {
       width: 100%;
-      height: calc(100% - 220px);
-      resize: none;
+      padding: 10px;
       font-family: monospace;
       font-size: 14px;
       background-color: #2a2a2a;
       color: #ffffff;
-      border: 1px solid #444;
-      padding: 10px;
+      border: none;
+      resize: none;
+      box-sizing: border-box;
+      overflow: auto;
     }
-
     input[type="text"], button {
+      display: block;
       margin-top: 10px;
       padding: 10px;
       font-size: 14px;
@@ -52,31 +68,33 @@
       width: calc(100% - 22px);
       box-sizing: border-box;
     }
-
     button:hover {
       background-color: #666;
     }
-
     label {
       display: block;
       margin-top: 10px;
       font-size: 14px;
     }
-
     .block {
       padding: 10px;
       margin-bottom: 10px;
       border-radius: 5px;
-      white-space: pre-wrap;
+      background-color: #333;
+      position: relative;
       cursor: pointer;
+      white-space: pre-wrap;
     }
-
+    .line-number {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      font-size: 12px;
+      color: #888;
+    }
     #dropZone {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       border: 2px dashed #888;
       display: none;
       align-items: center;
@@ -91,10 +109,12 @@
 <body>
   <div id="left">
     <div id="dropZone">Datei hierher ziehen</div>
-    <textarea id="textArea" placeholder="Textinhalt wird hier angezeigt..."></textarea>
+    <div id="editorContainer">
+      <div id="lineNumbers"></div>
+      <textarea id="textArea" placeholder="Textinhalt wird hier angezeigt..."></textarea>
+    </div>
     <input type="text" id="searchInput" placeholder="Suchbegriff eingeben">
     <label><input type="checkbox" id="searchAllLines"> In allen Zeilen suchen</label>
-    <button onclick="renderBlocks()">Filtern & Anzeigen</button>
     <button onclick="saveText()">Speichern</button>
   </div>
   <div id="right">
@@ -108,7 +128,18 @@
     const dropZone = document.getElementById('dropZone');
     const searchInput = document.getElementById('searchInput');
     const searchAllLines = document.getElementById('searchAllLines');
+    const lineNumbers = document.getElementById('lineNumbers');
     const colors = ['#1e3a5f', '#294a6e'];
+
+    function updateLineNumbers() {
+      const lines = textArea.value.split('\n').length;
+      lineNumbers.innerHTML = '';
+      for (let i = 1; i <= lines; i++) {
+        const div = document.createElement('div');
+        div.textContent = i;
+        lineNumbers.appendChild(div);
+      }
+    }
 
     function renderBlocks() {
       const text = textArea.value;
@@ -122,61 +153,66 @@
       blocks.forEach((block, index) => {
         const lines = block.trim().split('\n');
         const firstLine = lines[0].trim();
-        const match = keyword === '' || (
-          searchEveryLine
+        const match = keyword === '' ||
+          (searchEveryLine
             ? lines.some(line => line.toLowerCase().includes(keyword))
-            : firstLine.toLowerCase().includes(keyword)
-        );
+            : firstLine.toLowerCase().includes(keyword));
 
-        if (match) {
-          const div = document.createElement('div');
-          div.className = 'block';
-          div.style.backgroundColor = colors[index % 2];
-          div.textContent = block.trim();
+        if (!match) return;
 
-          // Position im Originaltext merken
-          const blockStart = text.indexOf(block, currentIndex);
-          currentIndex = blockStart + block.length;
-          div.dataset.start = blockStart;
+        const blockStart = text.indexOf(block, currentIndex);
+        currentIndex = blockStart + block.length;
+        const lineNumber = text.slice(0, blockStart).split('\n').length;
 
-          // Link-Erkennung
-          const linkContainer = document.createElement('div');
-          linkContainer.style.marginTop = '5px';
+        const div = document.createElement('div');
+        div.className = 'block';
+        div.style.backgroundColor = colors[index % 2];
+        div.draggable = true;
+        div.dataset.index = index;
+        div.dataset.start = blockStart;
 
-          const domainPattern = /^[a-z0-9\-]+\.[a-z]{2,}$/i;
-          const fullUrlPattern = /^https?:\/\/\S+\.\S+/i;
-          const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const label = document.createElement('div');
+        label.className = 'line-number';
+        label.textContent = `Zeile ${lineNumber}`;
+        div.appendChild(label);
 
-          if (fullUrlPattern.test(firstLine)) {
-            const link = document.createElement('a');
-            link.href = firstLine;
-            link.textContent = '🔗 Webseite öffnen';
-            link.target = '_blank';
-            link.style.color = '#00bfff';
-            link.style.display = 'block';
-            linkContainer.appendChild(link);
-          } else if (domainPattern.test(firstLine)) {
-            const link = document.createElement('a');
-            link.href = `https://www.${firstLine}`;
-            link.textContent = `🌐 Öffnen: www.${firstLine}`;
-            link.target = '_blank';
-            link.style.color = '#00bfff';
-            link.style.display = 'block';
-            linkContainer.appendChild(link);
-          } else if (emailPattern.test(firstLine)) {
-            const domain = firstLine.split('@')[1];
-            const link = document.createElement('a');
-            link.href = `https://www.${domain}`;
-            link.textContent = `📬 Domain öffnen: ${domain}`;
-            link.target = '_blank';
-            link.style.color = '#00ff88';
-            link.style.display = 'block';
-            linkContainer.appendChild(link);
-          }
+        const content = document.createElement('div');
+        content.textContent = block.trim();
+        div.appendChild(content);
 
-          div.appendChild(linkContainer);
-          renderedOutput.appendChild(div);
+        const linkContainer = document.createElement('div');
+        linkContainer.style.marginTop = '5px';
+
+        const domainPattern = /^[a-z0-9\-]+\.[a-z]{2,}$/i;
+        const fullUrlPattern = /^https?:\/\/\S+\.\S+/i;
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (fullUrlPattern.test(firstLine)) {
+          const link = document.createElement('a');
+          link.href = firstLine;
+          link.textContent = '🔗 Webseite öffnen';
+          link.target = '_blank';
+          link.style.color = '#00bfff';
+          linkContainer.appendChild(link);
+        } else if (domainPattern.test(firstLine)) {
+          const link = document.createElement('a');
+          link.href = `https://www.${firstLine}`;
+          link.textContent = `🌐 Öffnen: www.${firstLine}`;
+          link.target = '_blank';
+          link.style.color = '#00bfff';
+          linkContainer.appendChild(link);
+        } else if (emailPattern.test(firstLine)) {
+          const domain = firstLine.split('@')[1];
+          const link = document.createElement('a');
+          link.href = `https://www.${domain}`;
+          link.textContent = `📬 Domain öffnen: ${domain}`;
+          link.target = '_blank';
+          link.style.color = '#00ff88';
+          linkContainer.appendChild(link);
         }
+
+        div.appendChild(linkContainer);
+        renderedOutput.appendChild(div);
       });
     }
 
@@ -192,14 +228,13 @@
       URL.revokeObjectURL(link.href);
     }
 
-    // Drag & Drop
-    ['dragenter', 'dragover'].forEach(evt => {
+    ['dragenter','dragover'].forEach(evt => {
       document.body.addEventListener(evt, e => {
         e.preventDefault();
         dropZone.style.display = 'flex';
       });
     });
-    ['dragleave', 'drop'].forEach(evt => {
+    ['dragleave','drop'].forEach(evt => {
       document.body.addEventListener(evt, e => {
         e.preventDefault();
         dropZone.style.display = 'none';
@@ -211,6 +246,7 @@
         const reader = new FileReader();
         reader.onload = e => {
           textArea.value = e.target.result;
+          updateLineNumbers();
           renderBlocks();
         };
         reader.readAsText(file);
@@ -219,22 +255,26 @@
       }
     });
 
-    // Live-Filter und Klick-Interaktionen
-    textArea.addEventListener('input', renderBlocks);
-    searchInput.addEventListener('input', renderBlocks);
-    searchAllLines.addEventListener('change', renderBlocks);
+    textArea.addEventListener('input', () => {
+      updateLineNumbers();
+      renderBlocks();
+    });
+    textArea.addEventListener('scroll', () => {
+      lineNumbers.scrollTop = textArea.scrollTop;
+          });
 
+    // Wort bei Klick ins Suchfeld + kopieren; Suchfeld leeren bei Doppelklick
     textArea.addEventListener('click', () => {
-      const cursorPos = textArea.selectionStart;
-      const text = textArea.value;
-      const left = text.slice(0, cursorPos).search(/\S+$/);
-      const right = text.slice(cursorPos).search(/\s/);
-      const end = right === -1 ? text.length : cursorPos + right;
-      const word = text.slice(left, end).trim();
-      if (word.length > 0) {
+      const pos = textArea.selectionStart;
+      const txt = textArea.value;
+      const start = txt.slice(0, pos).search(/\S+$/);
+      const end = (txt.slice(pos).search(/\s/) === -1)
+        ? txt.length
+        : pos + txt.slice(pos).search(/\s/);
+      const word = txt.slice(start, end).trim();
+      if (word) {
         searchInput.value = word;
-        navigator.clipboard.writeText(word)
-          .catch(err => console.error('Clipboard-Fehler:', err));
+        navigator.clipboard.writeText(word).catch(() => {});
         renderBlocks();
       }
     });
@@ -244,24 +284,69 @@
       renderBlocks();
     });
 
-    // Klick auf Block rechts → scrollt links zum Block
+    // Klick auf Block rechts → links scrollen
     renderedOutput.addEventListener('click', e => {
       const block = e.target.closest('.block');
-      if (block && block.dataset.start) {
-        const pos = parseInt(block.dataset.start, 10);
-        textArea.focus();
-        textArea.setSelectionRange(pos, pos);
-        const lineHeight = 18; // anpassen falls nötig
-        const linesAbove = textArea.value.slice(0, pos).split('\n').length;
-        
-        const offset = textArea.clientHeight / 3;
-        textArea.scrollTop = (linesAbove - 1) * lineHeight - offset;
-
-      }
+      if (!block || !block.dataset.start) return;
+      const pos = parseInt(block.dataset.start, 10);
+      textArea.focus();
+      textArea.setSelectionRange(pos, pos);
+      const lineHeight = 18;
+      const linesAbove = textArea.value.slice(0, pos).split('\n').length;
+      const offset = textArea.clientHeight / 3;
+      textArea.scrollTop = (linesAbove - 1) * lineHeight - offset;
+      lineNumbers.scrollTop = textArea.scrollTop;
     });
 
-    // Automatisches Speichern beim Schließen
-    window.addEventListener('beforeunload', saveText);
+    // Drag-and-Drop der Blöcke im rechten Fenster (mit Strg)
+    let ctrlPressed = false;
+    let draggedIndex = null;
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Control') ctrlPressed = true;
+    });
+
+    document.addEventListener('keyup', e => {
+      if (e.key === 'Control') ctrlPressed = false;
+    });
+
+    renderedOutput.addEventListener('dragstart', e => {
+      if (!ctrlPressed) { e.preventDefault(); return; }
+      const blk = e.target.closest('.block');
+      if (blk) draggedIndex = parseInt(blk.dataset.index, 10);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    renderedOutput.addEventListener('dragover', e => {
+      if (ctrlPressed) e.preventDefault();
+    });
+
+    renderedOutput.addEventListener('drop', e => {
+      if (!ctrlPressed || draggedIndex === null) return;
+      const target = e.target.closest('.block');
+      if (!target) return;
+      const targetIndex = parseInt(target.dataset.index, 10);
+      if (targetIndex === draggedIndex) return;
+      const text = textArea.value;
+      const blocks = text.split(/\n\s*\n/);
+      const moved = blocks.splice(draggedIndex, 1)[0];
+      blocks.splice(targetIndex, 0, moved);
+      textArea.value = blocks.join('\n\n');
+      updateLineNumbers();
+      renderBlocks();
+    });
+    
+    searchInput.addEventListener('input', () => {
+      renderBlocks();
+    });
+
+    
+    // Initiales Rendern
+    window.addEventListener('load', () => {
+      updateLineNumbers();
+      renderBlocks();
+    });
   </script>
 </body>
 </html>
+
